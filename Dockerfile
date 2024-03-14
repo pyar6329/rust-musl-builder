@@ -1,15 +1,12 @@
 # Use Ubuntu 18.04 LTS as our base image.
 FROM ubuntu:22.04
 
-# The Rust toolchain to use when building our image.  Set by `hooks/build`.
-ARG TOOLCHAIN=stable
-
 # The OpenSSL version to use. Here is the place to check for new releases:
 #
 # - https://www.openssl.org/source/
 #
 # ALSO UPDATE hooks/build!
-ARG OPENSSL_VERSION=1.1.1m
+ARG OPENSSL_VERSION=3.2.1
 
 # Versions for other dependencies. Here are the places to check for new
 # releases:
@@ -22,11 +19,11 @@ ARG OPENSSL_VERSION=1.1.1m
 #
 # We're stuck on PostgreSQL 11 until we figure out
 # https://github.com/emk/rust-musl-builder/issues.
-ARG CARGO_ABOUT_VERSION=0.4.4
-ARG CARGO_DENY_VERSION=0.11.1
-ARG ZLIB_VERSION=1.3
-ARG POSTGRESQL_VERSION=11.11
-ARG PROTOBUF_VERSION=21.1
+ARG CARGO_ABOUT_VERSION=0.6.0
+ARG CARGO_DENY_VERSION=0.14.16
+ARG ZLIB_VERSION=1.3.1
+ARG POSTGRESQL_VERSION=14.11
+ARG PROTOBUF_VERSION=25.2
 
 # Make sure we have basic dev tools for building C libraries.  Our goal here is
 # to support the musl-libc builds and Cargo builds needed for a large selection
@@ -56,6 +53,8 @@ RUN buildDeps='unzip'; \
     pkgconf \
     sudo \
     xutils-dev \
+    flex \
+    bison \
     && \
     useradd rust --user-group --create-home --shell /bin/bash --groups sudo && \
     curl -fLO https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
@@ -79,7 +78,7 @@ RUN ln -s "/usr/bin/g++" "/usr/bin/musl-g++"
 # the popular Rust `hyper` crate.
 #
 # We point /usr/local/musl/include/linux at some Linux kernel headers (not
-# necessarily the right ones) in an effort to compile OpenSSL 1.1's "engine"
+# necessarily the right ones) in an effort to compile OpenSSL 3.2's "engine"
 # component. It's possible that this will cause bizarre and terrible things to
 # happen. There may be "sanitized" header
 RUN echo "Building OpenSSL" && \
@@ -89,9 +88,7 @@ RUN echo "Building OpenSSL" && \
     ln -s /usr/include/x86_64-linux-gnu/asm /usr/local/musl/include/asm && \
     ln -s /usr/include/asm-generic /usr/local/musl/include/asm-generic && \
     cd /tmp && \
-    short_version="$(echo "$OPENSSL_VERSION" | sed s'/[a-z]$//' )" && \
-    curl -fLO "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" || \
-    curl -fLO "https://www.openssl.org/source/old/$short_version/openssl-$OPENSSL_VERSION.tar.gz" && \
+    curl -fLO "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" && \
     tar xvzf "openssl-$OPENSSL_VERSION.tar.gz" && cd "openssl-$OPENSSL_VERSION" && \
     env CC=musl-gcc ./Configure no-shared no-zlib -fPIC --prefix=/usr/local/musl -DOPENSSL_NO_SECURE_MEMORY linux-x86_64 && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ make depend && \
@@ -112,9 +109,27 @@ RUN echo "Building libpq" && \
     cd /tmp && \
     curl -fLO "https://ftp.postgresql.org/pub/source/v$POSTGRESQL_VERSION/postgresql-$POSTGRESQL_VERSION.tar.gz" && \
     tar xzf "postgresql-$POSTGRESQL_VERSION.tar.gz" && cd "postgresql-$POSTGRESQL_VERSION" && \
-    CC=musl-gcc CPPFLAGS=-I/usr/local/musl/include LDFLAGS=-L/usr/local/musl/lib ./configure --with-openssl --without-readline --prefix=/usr/local/musl && \
+    CC=musl-gcc CPPFLAGS="-I/usr/local/musl/include" LDFLAGS="-L/usr/local/musl/lib -L/usr/local/musl/lib64" ./configure --with-openssl --without-readline --prefix=/usr/local/musl && \
     cd src/interfaces/libpq && make all-static-lib && make install-lib-static && \
     cd ../../bin/pg_config && make && make install && \
+    cd "/tmp/postgresql-$POSTGRESQL_VERSION/src" && \
+    make -C common && \
+    make -C backend && \
+    make -C interfaces/libpq && \
+    make -C interfaces/libpq install-strip && \
+    make -C include && \
+    make -C include install-strip && \
+    make -C bin/pg_config && \
+    make -C bin/pg_config install-strip && \
+    mkdir libpq-tmp && \
+    cd libpq-tmp && \
+    ar -x ../interfaces/libpq/libpq.a && \
+    ar -x ../common/libpgcommon.a && \
+    ar -x ../port/libpgport.a && \
+    rm -rf /usr/local/musl/lib/libpq.a && \
+    ar -qs /usr/local/musl/lib/libpq.a ./*.o && \
+    strip -x /usr/local/musl/lib/libpq.a && \
+    cd /tmp && \
     rm -r /tmp/*
 
 # (Please feel free to submit pull requests for musl-libc builds of other C
@@ -133,7 +148,11 @@ RUN git config --global credential.https://github.com.helper ghtoken
 # We use the instructions at https://github.com/rust-lang/rustup/issues/2383
 # to install the rustup toolchain as root.
 ENV RUSTUP_HOME=/opt/rust/rustup \
-    PATH=/home/rust/.cargo/bin:/opt/rust/cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PATH=/home/rust/.cargo/bin:/opt/rust/cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    CARGO_HOME=/opt/rust/cargo
+
+# The Rust toolchain to use when building our image.  Set by `hooks/build`.
+ARG TOOLCHAIN=stable
 
 # Install our Rust toolchain and the `musl` target.  We patch the
 # command-line we pass to the installer so that it won't attempt to
@@ -141,15 +160,10 @@ ENV RUSTUP_HOME=/opt/rust/rustup \
 # `--target` to musl so that our users don't need to keep overriding it
 # manually.
 RUN curl https://sh.rustup.rs -sSf | \
-    env CARGO_HOME=/opt/rust/cargo \
     sh -s -- -y --default-toolchain $TOOLCHAIN --profile minimal --no-modify-path && \
-    env CARGO_HOME=/opt/rust/cargo \
     rustup component add rustfmt && \
-    env CARGO_HOME=/opt/rust/cargo \
     rustup component add clippy && \
-    env CARGO_HOME=/opt/rust/cargo \
     rustup target add x86_64-unknown-linux-musl && \
-    env CARGO_HOME=/opt/rust/cargo \
     rustup component add llvm-tools-preview
 ADD cargo-config.toml /opt/rust/cargo/config
 
@@ -169,9 +183,9 @@ ENV X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR=/usr/local/musl/ \
 #
 # We include cargo-audit for compatibility with earlier versions of this image,
 # but cargo-deny provides a superset of cargo-audit's features.
-RUN env CARGO_HOME=/opt/rust/cargo cargo install -f cargo-audit && \
-    env CARGO_HOME=/opt/rust/cargo cargo install -f cargo-deb && \
-    env CARGO_HOME=/opt/rust/cargo cargo install -f cargo-llvm-cov && \
+RUN cargo install -f cargo-audit && \
+    cargo install -f cargo-deb && \
+    cargo install -f cargo-llvm-cov && \
     rm -rf /opt/rust/cargo/registry/
 
 # Allow sudo without a password.
