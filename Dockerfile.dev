@@ -23,6 +23,8 @@ ARG CARGO_DENY_VERSION=0.14.16
 ARG ZLIB_VERSION=1.3.1
 ARG POSTGRESQL_VERSION=14.11
 ARG PROTOBUF_VERSION=26.1
+ARG MOLD_VERSION=2.31.0
+ARG SCCACHE_VERSION=0.8.0
 
 # Make sure we have basic dev tools for building C libraries.  Our goal here is
 # to support the musl-libc builds and Cargo builds needed for a large selection
@@ -54,8 +56,10 @@ RUN buildDeps='unzip'; \
     xutils-dev \
     flex \
     bison \
+    zsh \
+    clang \
     && \
-    useradd rust --user-group --create-home --shell /bin/bash --groups sudo && \
+    useradd rust --user-group --create-home --shell /usr/bin/zsh --groups sudo && \
     curl -fLO https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
     tar xf cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
     mv cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl/cargo-about /usr/local/bin/ && \
@@ -163,6 +167,7 @@ RUN curl https://sh.rustup.rs -sSf | \
     rustup component add rustfmt && \
     rustup component add clippy && \
     rustup target add x86_64-unknown-linux-musl && \
+    rustup target add x86_64-unknown-linux-gnu && \
     rustup component add llvm-tools-preview
 COPY cargo-config.toml /opt/rust/cargo/config.toml
 
@@ -190,6 +195,41 @@ RUN cargo install -f cargo-audit && \
 # Allow sudo without a password.
 COPY --chmod=440 sudoers /etc/sudoers.d/nopasswd
 
+# Install the `docker` CLI for running Docker images from within our Docker
+RUN apt-get update && \
+    apt-get install -y ca-certificates curl && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y docker-ce docker-ce-cli containerd.io && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    usermod -aG docker rust && \
+    echo "sudo service docker start" >> /home/rust/.bashrc
+
+# copy zsh config
+COPY --chown=rust:rust zshrc.zsh /home/rust/.zshrc
+
+# install starship prompt
+RUN curl -fsSL https://starship.rs/install.sh | sh -s -- -y
+
+# install mold
+RUN curl -sL https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz | \
+  tar -C /usr/local --strip-components=1 --no-overwrite-dir -xzf -
+
+# install sccache
+RUN curl -sL https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz | \
+  tar -C /usr/local/bin --strip-components=1 --wildcards '*/sccache' -xzf -
+
+ENV RUSTC_WRAPPER="/usr/local/bin/sccache"
+
+COPY cargo-config-dev.toml /opt/rust/cargo/config.toml
+
 # Run all further code as user `rust`, create our working directories, install
 # our config file, and set up our credential helper.
 #
@@ -203,3 +243,11 @@ RUN mkdir -p /home/rust/libs /home/rust/src /home/rust/.cargo && \
 # Expect our source code to live in /home/rust/src.  We'll run the build as
 # user `rust`, which will be uid 1000, gid 1000 outside the container.
 WORKDIR /home/rust/src
+
+# add default lang/locale/timezone
+# MALLOC_CONF: compile boost. ref: https://kobzol.github.io/rust/rustc/2023/10/21/make-rust-compiler-5percent-faster.html
+ENV MALLOC_CONF="thp:always,metadata_thp:always" \
+    LANG="en_US.UTF-8" \
+    LC_ALL="en_US.UTF-8" \
+    TZ="UTC" \
+    TERM="xterm-256color"

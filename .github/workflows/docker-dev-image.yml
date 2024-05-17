@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: Docker Dev Image CI
 
 on: [push]
 
@@ -38,7 +38,7 @@ jobs:
             TOOLCHAIN=${{ steps.rust_version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          file: ./Dockerfile
+          file: ./Dockerfile.dev
 
       - name: Build container image
         uses: docker/build-push-action@v5
@@ -46,9 +46,9 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/rust-musl-builder:${{ steps.rust_version.outputs.version }}-llvm-cov
+            ghcr.io/${{ github.repository }}/rust-musl-builder:${{ steps.rust_version.outputs.version }}-llvm-cov-dev
           build-args: |
             TOOLCHAIN=${{ steps.rust_version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          file: ./Dockerfile
+          file: ./Dockerfile.dev
