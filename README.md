@@ -18,8 +18,6 @@ rust-musl-builder cargo build --release
 
 This command assumes that `$(pwd)` is readable and writable by uid 1000, gid 1000. At the moment, it doesn't attempt to cache libraries between builds, so this is best reserved for making final release builds.
 
-For a more realistic example, see the `Dockerfile`s for [examples/using-diesel](./examples/using-diesel) and [examples/using-sqlx](./examples/using-sqlx).
-
 ## Deploying your Rust application
 
 With a bit of luck, you should be able to just copy your application binary from `target/x86_64-unknown-linux-musl/release` (or `target/aarch64-unknown-linux-musl/release` on arm64 hosts), and install it directly on any reasonably modern Linux machine of the matching architecture. You can also copy your Rust application into an [Alpine Linux container][]. See below for details!
@@ -27,8 +25,6 @@ With a bit of luck, you should be able to just copy your application binary from
 ## Available tags
 
 Images are published to GitHub Container Registry at `ghcr.io/pyar6329/rust-musl-builder/rust-musl-builder`. Tags are named `X.Y.Z-llvm-cov` where `X.Y.Z` matches the Rust toolchain version pinned in [`rust-toolchain`](./rust-toolchain). Each tag is a multi-arch manifest covering both `linux/amd64` and `linux/arm64`.
-
-Each image should be able to compile [examples/using-diesel](./examples/using-diesel) and [examples/using-sqlx](./examples/using-sqlx) on both supported architectures.
 
 ## Caching builds
 
@@ -40,12 +36,7 @@ You may be able to speed up build performance by adding the following `-v` comma
 -v target:/home/rust/src/target
 ```
 
-You will also need to fix the permissions on the mounted volumes:
-
-```sh
-rust-musl-builder sudo chown -R rust:rust \
-  /home/rust/.cargo/git /home/rust/.cargo/registry /home/rust/src/target
-```
+Make sure the mounted volumes are owned by uid/gid `1000` (the `rust` user inside the container) on the host so the container can write to them.
 
 ## How it works
 
@@ -55,7 +46,7 @@ rust-musl-builder sudo chown -R rust:rust \
 - OpenSSL, which is needed by many Rust applications.
 - `libpq`, which is needed for applications that use `diesel` with PostgreSQL.
 - `libz`, which is needed by `libpq`.
-- SQLite3. See [examples/using-diesel](./examples/using-diesel/).
+- SQLite3.
 
 This library also sets up the environment variables needed to compile popular Rust crates using these libraries.
 
@@ -109,14 +100,14 @@ If this doesn't work, you _might_ be able to fix it by reversing the order.
 
 ## Making tiny Docker images with Alpine Linux and Rust binaries
 
-Docker now supports [multistage builds][multistage], which make it easy to build your Rust application with `rust-musl-builder` and deploy it using [Alpine Linux][]. For a working example, see [`examples/using-diesel/Dockerfile`](./examples/using-diesel/Dockerfile).
+Docker supports [multistage builds][multistage], which make it easy to build your Rust application with `rust-musl-builder` and deploy it using [Alpine Linux][].
 
 [multistage]: https://docs.docker.com/engine/userguide/eng-image/multistage-build/
 [Alpine Linux]: https://alpinelinux.org/
 
 ## Adding more C libraries
 
-If you're using Docker crates which require specific C libraries to be installed, you can create a `Dockerfile` based on this one, and use `musl-gcc` to compile the libraries you need.  For an example, see [`examples/adding-a-library/Dockerfile`](./examples/adding-a-library/Dockerfile). This usually involves a bit of experimentation for each new library, but it seems to work well for most simple, standalone libraries.
+If you're using crates which require specific C libraries to be installed, you can create a `Dockerfile` based on this one, and use `musl-gcc` to compile the libraries you need. This usually involves a bit of experimentation for each new library, but it seems to work well for most simple, standalone libraries.
 
 If you need an especially common library, please feel free to submit a pull request adding it to the main `Dockerfile`!  We'd like to support popular Rust crates out of the box.
 
@@ -134,10 +125,6 @@ docker run --rm -it --platform=linux/arm64 \
   ghcr.io/pyar6329/rust-musl-builder/rust-musl-builder:latest-llvm-cov \
   cargo build --release
 ```
-
-## Development notes
-
-After modifying the image, run `./test-image` to make sure that everything works.
 
 ## Other ways to build portable Rust binaries
 
