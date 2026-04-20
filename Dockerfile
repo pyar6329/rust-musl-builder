@@ -1,4 +1,5 @@
-FROM ubuntu:22.04
+# syntax=docker/dockerfile:1
+FROM ubuntu:24.04
 
 # The OpenSSL version to use. Here is the place to check for new releases:
 #
@@ -32,7 +33,11 @@ ARG PROTOBUF_VERSION=26.1
 # need to install any more software.
 #
 # `mdbook` is the standard Rust tool for making searchable HTML manuals.
-RUN buildDeps='unzip'; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=cache,target=/downloads,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    buildDeps='unzip' && \
     apt-get update && \
     export DEBIAN_FRONTEND=noninteractive && \
     apt-get install -yq \
@@ -55,19 +60,21 @@ RUN buildDeps='unzip'; \
     flex \
     bison \
     && \
+    (userdel -r ubuntu 2>/dev/null || true) && \
     useradd rust --user-group --create-home --shell /bin/bash --groups sudo && \
-    curl -fLO https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    tar xf cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    mv cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl/cargo-about /usr/local/bin/ && \
-    rm -rf cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl && \
-    curl -fLO https://github.com/EmbarkStudios/cargo-deny/releases/download/$CARGO_DENY_VERSION/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    tar xf cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    mv cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl/cargo-deny /usr/local/bin/ && \
-    rm -rf cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    curl -fLO https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOBUF_VERSION/protoc-$PROTOBUF_VERSION-linux-x86_64.zip && \
-    unzip -o -d /usr/local ./protoc-$PROTOBUF_VERSION-linux-x86_64.zip && \
-    rm ./protoc-$PROTOBUF_VERSION-linux-x86_64.zip && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    T="/downloads/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz" && \
+    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz" && \
+    tar -C /tmp -xf "$T" && \
+    mv "/tmp/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl/cargo-about" /usr/local/bin/ && \
+    rm -rf "/tmp/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl" && \
+    T="/downloads/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz" && \
+    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/EmbarkStudios/cargo-deny/releases/download/$CARGO_DENY_VERSION/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz" && \
+    tar -C /tmp -xf "$T" && \
+    mv "/tmp/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl/cargo-deny" /usr/local/bin/ && \
+    rm -rf "/tmp/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl" && \
+    T="/downloads/protoc-$PROTOBUF_VERSION-linux-x86_64.zip" && \
+    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOBUF_VERSION/protoc-$PROTOBUF_VERSION-linux-x86_64.zip" && \
+    unzip -o -d /usr/local "$T" && \
     apt-get purge -y --auto-remove $buildDeps
 
 # Static linking for C++ code
@@ -80,45 +87,48 @@ RUN ln -s "/usr/bin/g++" "/usr/bin/musl-g++"
 # necessarily the right ones) in an effort to compile OpenSSL 3.2's "engine"
 # component. It's possible that this will cause bizarre and terrible things to
 # happen. There may be "sanitized" header
-RUN echo "Building OpenSSL" && \
+RUN --mount=type=cache,target=/downloads,sharing=locked \
+    echo "Building OpenSSL" && \
     ls /usr/include/linux && \
     mkdir -p /usr/local/musl/include && \
     ln -s /usr/include/linux /usr/local/musl/include/linux && \
     ln -s /usr/include/x86_64-linux-gnu/asm /usr/local/musl/include/asm && \
     ln -s /usr/include/asm-generic /usr/local/musl/include/asm-generic && \
-    cd /tmp && \
-    curl -fLO "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" && \
-    tar xvzf "openssl-$OPENSSL_VERSION.tar.gz" && cd "openssl-$OPENSSL_VERSION" && \
+    T="/downloads/openssl-$OPENSSL_VERSION.tar.gz" && \
+    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" && \
+    cd /tmp && tar xzf "$T" && cd "openssl-$OPENSSL_VERSION" && \
     env CC=musl-gcc ./Configure no-shared no-zlib -fPIC --prefix=/usr/local/musl -DOPENSSL_NO_SECURE_MEMORY linux-x86_64 && \
-    env C_INCLUDE_PATH=/usr/local/musl/include/ make depend && \
-    env C_INCLUDE_PATH=/usr/local/musl/include/ make && \
+    env C_INCLUDE_PATH=/usr/local/musl/include/ make -j"$(nproc)" depend && \
+    env C_INCLUDE_PATH=/usr/local/musl/include/ make -j"$(nproc)" && \
     make install && \
     rm /usr/local/musl/include/linux /usr/local/musl/include/asm /usr/local/musl/include/asm-generic && \
-    rm -r /tmp/*
+    rm -rf "/tmp/openssl-$OPENSSL_VERSION"
 
-RUN echo "Building zlib" && \
-    cd /tmp && \
-    curl -fLO "http://zlib.net/zlib-$ZLIB_VERSION.tar.gz" && \
-    tar xzf "zlib-$ZLIB_VERSION.tar.gz" && cd "zlib-$ZLIB_VERSION" && \
+RUN --mount=type=cache,target=/downloads,sharing=locked \
+    echo "Building zlib" && \
+    T="/downloads/zlib-$ZLIB_VERSION.tar.gz" && \
+    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "http://zlib.net/zlib-$ZLIB_VERSION.tar.gz" && \
+    cd /tmp && tar xzf "$T" && cd "zlib-$ZLIB_VERSION" && \
     CC=musl-gcc ./configure --static --prefix=/usr/local/musl && \
-    make && make install && \
-    rm -r /tmp/*
+    make -j"$(nproc)" && make install && \
+    rm -rf "/tmp/zlib-$ZLIB_VERSION"
 
-RUN echo "Building libpq" && \
-    cd /tmp && \
-    curl -fLO "https://ftp.postgresql.org/pub/source/v$POSTGRESQL_VERSION/postgresql-$POSTGRESQL_VERSION.tar.gz" && \
-    tar xzf "postgresql-$POSTGRESQL_VERSION.tar.gz" && cd "postgresql-$POSTGRESQL_VERSION" && \
+RUN --mount=type=cache,target=/downloads,sharing=locked \
+    echo "Building libpq" && \
+    T="/downloads/postgresql-$POSTGRESQL_VERSION.tar.gz" && \
+    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://ftp.postgresql.org/pub/source/v$POSTGRESQL_VERSION/postgresql-$POSTGRESQL_VERSION.tar.gz" && \
+    cd /tmp && tar xzf "$T" && cd "postgresql-$POSTGRESQL_VERSION" && \
     CC=musl-gcc CPPFLAGS="-I/usr/local/musl/include" LDFLAGS="-L/usr/local/musl/lib -L/usr/local/musl/lib64" ./configure --with-openssl --without-readline --prefix=/usr/local/musl && \
-    cd src/interfaces/libpq && make all-static-lib && make install-lib-static && \
-    cd ../../bin/pg_config && make && make install && \
+    cd src/interfaces/libpq && make -j"$(nproc)" all-static-lib && make install-lib-static && \
+    cd ../../bin/pg_config && make -j"$(nproc)" && make install && \
     cd "/tmp/postgresql-$POSTGRESQL_VERSION/src" && \
-    make -C common && \
-    make -C backend && \
-    make -C interfaces/libpq && \
+    make -j"$(nproc)" -C common && \
+    make -j"$(nproc)" -C backend && \
+    make -j"$(nproc)" -C interfaces/libpq && \
     make -C interfaces/libpq install-strip && \
-    make -C include && \
+    make -j"$(nproc)" -C include && \
     make -C include install-strip && \
-    make -C bin/pg_config && \
+    make -j"$(nproc)" -C bin/pg_config && \
     make -C bin/pg_config install-strip && \
     mkdir libpq-tmp && \
     cd libpq-tmp && \
@@ -128,8 +138,7 @@ RUN echo "Building libpq" && \
     rm -rf /usr/local/musl/lib/libpq.a && \
     ar -qs /usr/local/musl/lib/libpq.a ./*.o && \
     strip -x /usr/local/musl/lib/libpq.a && \
-    cd /tmp && \
-    rm -r /tmp/*
+    rm -rf "/tmp/postgresql-$POSTGRESQL_VERSION"
 
 # (Please feel free to submit pull requests for musl-libc builds of other C
 # libraries needed by the most popular and common Rust crates, to avoid
@@ -182,10 +191,11 @@ ENV X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR=/usr/local/musl/ \
 #
 # We include cargo-audit for compatibility with earlier versions of this image,
 # but cargo-deny provides a superset of cargo-audit's features.
-RUN cargo install -f cargo-audit && \
+RUN --mount=type=cache,target=/opt/rust/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/opt/rust/cargo/git,sharing=locked \
+    cargo install -f cargo-audit && \
     cargo install -f cargo-deb && \
-    cargo install -f cargo-llvm-cov && \
-    rm -rf /opt/rust/cargo/registry/
+    cargo install -f cargo-llvm-cov
 
 # Allow sudo without a password.
 COPY --chmod=440 sudoers /etc/sudoers.d/nopasswd

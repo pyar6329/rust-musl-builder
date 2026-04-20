@@ -1,0 +1,53 @@
+name: Check Rust Release
+
+on:
+  schedule:
+    - cron: '0 15 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  bump:
+    name: Bump rust-toolchain if a new Rust release is available
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Get versions
+        id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST=$(gh api repos/rust-lang/rust/releases/latest --jq .tag_name)
+          CURRENT=$(tr -d '\n' < rust-toolchain)
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        if: steps.v.outputs.latest != steps.v.outputs.current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW: ${{ steps.v.outputs.latest }}
+        run: |
+          BRANCH="bump-rust-$NEW"
+          if gh pr list --head "$BRANCH" --state open --json number --jq '.[0]' | grep -q .; then
+            echo "PR already exists for $BRANCH"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          printf '%s\n' "$NEW" > rust-toolchain
+          git add rust-toolchain
+          git commit -m "feat: bump rust $NEW"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "feat: bump rust $NEW" \
+            --body "Rust \`$NEW\` has been released.
+
+See: https://github.com/rust-lang/rust/releases/tag/$NEW"

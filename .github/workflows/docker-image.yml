@@ -5,7 +5,7 @@ on: [push]
 jobs:
   push_to_registry:
     name: Push Docker image to Github Packages
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       packages: write
       contents: read
@@ -36,8 +36,10 @@ jobs:
           push: false
           build-args: |
             TOOLCHAIN=${{ steps.rust_version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=buildkit-prod-${{ github.ref_name }}
+            type=gha,scope=buildkit-prod-main
+          cache-to: type=gha,mode=max,compression=zstd,scope=buildkit-prod-${{ github.ref_name }}
           file: ./Dockerfile
 
       - name: Build container image
@@ -49,6 +51,8 @@ jobs:
             ghcr.io/${{ github.repository }}/rust-musl-builder:${{ steps.rust_version.outputs.version }}-llvm-cov
           build-args: |
             TOOLCHAIN=${{ steps.rust_version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=buildkit-prod-${{ github.ref_name }}
+            type=gha,scope=buildkit-prod-main
+          cache-to: type=gha,mode=max,compression=zstd,scope=buildkit-prod-${{ github.ref_name }}
           file: ./Dockerfile
