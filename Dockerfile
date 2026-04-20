@@ -40,8 +40,8 @@ ARG TARGETARCH
 RUN --mount=type=cache,target=/downloads,sharing=locked \
     set -eux && \
     case "$TARGETARCH" in \
-      amd64) ARCH_GNU="x86_64-linux-gnu"; OSSL_TARGET="linux-x86_64" ;; \
-      arm64) ARCH_GNU="aarch64-linux-gnu"; OSSL_TARGET="linux-aarch64" ;; \
+      amd64) ARCH_GNU="x86_64-linux-gnu"; OSSL_TARGET="linux-x86_64"; EXTRA_CFLAGS="" ;; \
+      arm64) ARCH_GNU="aarch64-linux-gnu"; OSSL_TARGET="linux-aarch64"; EXTRA_CFLAGS="-mno-outline-atomics" ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac && \
     mkdir -p /usr/local/musl/include && \
@@ -49,9 +49,9 @@ RUN --mount=type=cache,target=/downloads,sharing=locked \
     ln -s "/usr/include/${ARCH_GNU}/asm" /usr/local/musl/include/asm && \
     ln -s /usr/include/asm-generic /usr/local/musl/include/asm-generic && \
     T="/downloads/openssl-${OPENSSL_VERSION}.tar.gz" && \
-    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" && \
+    tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" && mv "$T.part" "$T"; } && \
     cd /tmp && tar xzf "$T" && cd "openssl-${OPENSSL_VERSION}" && \
-    env CC=musl-gcc ./Configure no-shared no-zlib -fPIC --prefix=/usr/local/musl -DOPENSSL_NO_SECURE_MEMORY "$OSSL_TARGET" && \
+    env CC=musl-gcc ./Configure no-shared no-zlib no-tests no-quic no-fuzz-libfuzzer no-fuzz-afl -fPIC --prefix=/usr/local/musl -DOPENSSL_NO_SECURE_MEMORY $EXTRA_CFLAGS "$OSSL_TARGET" && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ make -j"$(nproc)" depend && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ make -j"$(nproc)" && \
     make install_sw && \
@@ -65,7 +65,7 @@ ARG ZLIB_VERSION
 RUN --mount=type=cache,target=/downloads,sharing=locked \
     set -eux && \
     T="/downloads/zlib-${ZLIB_VERSION}.tar.gz" && \
-    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "http://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" && \
+    tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "http://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" && mv "$T.part" "$T"; } && \
     cd /tmp && tar xzf "$T" && cd "zlib-${ZLIB_VERSION}" && \
     CC=musl-gcc ./configure --static --prefix=/usr/local/musl && \
     make -j"$(nproc)" && make install
@@ -79,7 +79,7 @@ COPY --from=openssl-builder /usr/local/musl /usr/local/musl
 RUN --mount=type=cache,target=/downloads,sharing=locked \
     set -eux && \
     T="/downloads/postgresql-${POSTGRESQL_VERSION}.tar.gz" && \
-    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://ftp.postgresql.org/pub/source/v${POSTGRESQL_VERSION}/postgresql-${POSTGRESQL_VERSION}.tar.gz" && \
+    tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://ftp.postgresql.org/pub/source/v${POSTGRESQL_VERSION}/postgresql-${POSTGRESQL_VERSION}.tar.gz" && mv "$T.part" "$T"; } && \
     cd /tmp && tar xzf "$T" && cd "postgresql-${POSTGRESQL_VERSION}" && \
     CC=musl-gcc \
     CPPFLAGS="-I/usr/local/musl/include" \
@@ -150,17 +150,17 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     (userdel -r ubuntu 2>/dev/null || true) && \
     useradd rust --user-group --create-home --shell /bin/bash --groups sudo && \
     T="/downloads/cargo-about-${CARGO_ABOUT_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && \
-    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/cargo-about-${CARGO_ABOUT_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && \
+    tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/cargo-about-${CARGO_ABOUT_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && mv "$T.part" "$T"; } && \
     tar -C /tmp -xf "$T" && \
     mv "/tmp/cargo-about-${CARGO_ABOUT_VERSION}-${RUST_ARCH}-unknown-linux-musl/cargo-about" /usr/local/bin/ && \
     rm -rf "/tmp/cargo-about-${CARGO_ABOUT_VERSION}-${RUST_ARCH}-unknown-linux-musl" && \
     T="/downloads/cargo-deny-${CARGO_DENY_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && \
-    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/cargo-deny-${CARGO_DENY_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && \
+    tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/cargo-deny-${CARGO_DENY_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && mv "$T.part" "$T"; } && \
     tar -C /tmp -xf "$T" && \
     mv "/tmp/cargo-deny-${CARGO_DENY_VERSION}-${RUST_ARCH}-unknown-linux-musl/cargo-deny" /usr/local/bin/ && \
     rm -rf "/tmp/cargo-deny-${CARGO_DENY_VERSION}-${RUST_ARCH}-unknown-linux-musl" && \
     T="/downloads/protoc-${PROTOBUF_VERSION}-linux-${PROTOC_ARCH}.zip" && \
-    [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-${PROTOC_ARCH}.zip" && \
+    unzip -tq "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-${PROTOC_ARCH}.zip" && mv "$T.part" "$T"; } && \
     unzip -o -d /usr/local "$T" && \
     apt-get purge -y --auto-remove $buildDeps
 
