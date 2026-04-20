@@ -39,3 +39,5 @@ fn main() {
 ## License
 
 [Apache 2.0](./LICENSE-APACHE.txt) or [MIT](./LICENSE-MIT.txt).
+
+Forked from [emk/rust-musl-builder](https://github.com/emk/rust-musl-builder).
