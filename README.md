@@ -1,20 +1,18 @@
 # `rust-musl-builder`: Docker container for easily building static Rust binaries
 
-[![Docker Image](https://img.shields.io/docker/pulls/ekidd/rust-musl-builder.svg?maxAge=2592000)](https://hub.docker.com/r/ekidd/rust-musl-builder/)
-
-- [Source on GitHub](https://github.com/emk/rust-musl-builder)
-- [Changelog](https://github.com/emk/rust-musl-builder/blob/master/CHANGELOG.md)
-
-**UPDATED:** Major updates in this release which may break some builds. See [the CHANGELOG](https://github.com/emk/rust-musl-builder/blob/master/CHANGELOG.md) for details. If these updates break your build, you can update your `Dockerfile` to use `FROM ekidd/rust-musl-builder:1.48.0` to revert to the previous version.
+- [Source on GitHub](https://github.com/pyar6329/rust-musl-builder)
+- [Changelog](https://github.com/pyar6329/rust-musl-builder/blob/main/CHANGELOG.md)
 
 ## What is this?
 
 This image allows you to build static Rust binaries using `diesel`, `sqlx` or `openssl`. These images can be distributed as single executable files with no dependencies, and they should work on any modern Linux system.
 
+The image is published as a multi-arch manifest for `linux/amd64` and `linux/arm64`, so `docker pull` / `docker run` automatically selects the matching architecture on both Intel/AMD and Apple Silicon / AWS Graviton hosts.
+
 To try it, run:
 
 ```sh
-alias rust-musl-builder='docker run --rm -it -v "$(pwd)":/home/rust/src ekidd/rust-musl-builder'
+alias rust-musl-builder='docker run --rm -it -v "$(pwd)":/home/rust/src ghcr.io/pyar6329/rust-musl-builder/rust-musl-builder:latest-llvm-cov'
 rust-musl-builder cargo build --release
 ```
 
@@ -24,28 +22,13 @@ For a more realistic example, see the `Dockerfile`s for [examples/using-diesel](
 
 ## Deploying your Rust application
 
-With a bit of luck, you should be able to just copy your application binary from `target/x86_64-unknown-linux-musl/release`, and install it directly on any reasonably modern x86_64 Linux machine.  In particular, you should be able make static release binaries using TravisCI and GitHub, or you can copy your Rust application into an [Alpine Linux container][]. See below for details!
+With a bit of luck, you should be able to just copy your application binary from `target/x86_64-unknown-linux-musl/release` (or `target/aarch64-unknown-linux-musl/release` on arm64 hosts), and install it directly on any reasonably modern Linux machine of the matching architecture. You can also copy your Rust application into an [Alpine Linux container][]. See below for details!
 
 ## Available tags
 
-In general, we provide the following tagged Docker images:
+Images are published to GitHub Container Registry at `ghcr.io/pyar6329/rust-musl-builder/rust-musl-builder`. Tags are named `X.Y.Z-llvm-cov` where `X.Y.Z` matches the Rust toolchain version pinned in [`rust-toolchain`](./rust-toolchain). Each tag is a multi-arch manifest covering both `linux/amd64` and `linux/arm64`.
 
-- `latest`, `stable`: Current stable Rust, now with OpenSSL 1.1. We
-  try to update this fairly rapidly after every new stable release, and
-  after most point releases.
-- `X.Y.Z`: Specific versions of stable Rust.
-- `beta`: This usually gets updated every six weeks alongside the stable
-  release. It will usually not be updated for beta bugfix releases.
-- `nightly-YYYY-MM-DD`: Specific nightly releases. These should almost
-  always support `clippy`, `rls` and `rustfmt`, as verified using
-  [rustup components history][comp]. If you need a specific date for
-  compatibility with `tokio` or another popular library using unstable
-  Rust, please file an issue.
-
-At a minimum, each of these images should be able to
-compile [examples/using-diesel](./examples/using-diesel) and [examples/using-sqlx](./examples/using-sqlx).
-
-[comp]: https://rust-lang.github.io/rustup-components-history/index.html
+Each image should be able to compile [examples/using-diesel](./examples/using-diesel) and [examples/using-sqlx](./examples/using-sqlx) on both supported architectures.
 
 ## Caching builds
 
@@ -80,11 +63,13 @@ This library also sets up the environment variables needed to compile popular Ru
 
 This image also supports the following extra goodies:
 
-- Basic compilation for `armv7` using `musl-libc`. Not all libraries are supported at the moment, however.
-- [`mdbook`][mdbook] and `mdbook-graphviz` for building searchable HTML documentation from Markdown files. Build manuals to use alongside your `cargo doc` output!
+- Native `aarch64-unknown-linux-musl` / `x86_64-unknown-linux-musl` toolchains, picked automatically from the pulled image's architecture.
 - [`cargo about`][about] to collect licenses for your dependencies.
-- [`cargo deb`][deb] to build Debian packages
+- [`cargo deb`][deb] to build Debian packages.
 - [`cargo deny`][deny] to check your Rust project for known security issues.
+- [`cargo audit`][audit] to audit `Cargo.lock` for crates with security advisories.
+- [`cargo llvm-cov`][llvm-cov] for source-based code coverage.
+- [`protoc`][protoc] for compiling Protocol Buffers.
 
 ## Making OpenSSL work
 
@@ -120,58 +105,7 @@ extern crate openssl;
 extern crate diesel;
 ```
 
-If this doesn't work, you _might_ be able to fix it by reversing the order. See [this PR](https://github.com/emk/rust-musl-builder/issues/69) for a discussion of the latest issues involved in linking to `diesel`, `pq-sys` and `openssl-sys`.
-
-## Making static releases with Travis CI and GitHub
-
-These instructions are inspired by [rust-cross][].
-
-First, read the [Travis CI: GitHub Releases Uploading][uploading] page, and run `travis setup releases` as instructed.  Then add the following lines to your existing `.travis.yml` file, replacing `myapp` with the name of your package:
-
-```yaml
-language: rust
-sudo: required
-os:
-- linux
-- osx
-rust:
-- stable
-services:
-- docker
-before_deploy: "./build-release myapp ${TRAVIS_TAG}-${TRAVIS_OS_NAME}"
-deploy:
-  provider: releases
-  api_key:
-    secure: "..."
-  file_glob: true
-  file: "myapp-${TRAVIS_TAG}-${TRAVIS_OS_NAME}.*"
-  skip_cleanup: true
-  on:
-    rust: stable
-    tags: true
-```
-
-Next, copy [`build-release`](./examples/build-release) into your project and run `chmod +x build-release`.
-
-Finally, add a `Dockerfile` to perform the actual build:
-
-```rust
-FROM ekidd/rust-musl-builder
-
-# We need to add the source code to the image because `rust-musl-builder`
-# assumes a UID of 1000, but TravisCI has switched to 2000.
-ADD --chown=rust:rust . ./
-
-CMD cargo build --release
-```
-
-When you push a new tag to your project, `build-release` will automatically build new Linux binaries using `rust-musl-builder`, and new Mac binaries with Cargo, and it will upload both to the GitHub releases page for your repository.
-
-For a working example, see [faradayio/cage][cage].
-
-[rust-cross]: https://github.com/japaric/rust-cross
-[uploading]: https://docs.travis-ci.com/user/deployment/releases
-[cage]: https://github.com/faradayio/cage
+If this doesn't work, you _might_ be able to fix it by reversing the order.
 
 ## Making tiny Docker images with Alpine Linux and Rust binaries
 
@@ -186,17 +120,20 @@ If you're using Docker crates which require specific C libraries to be installed
 
 If you need an especially common library, please feel free to submit a pull request adding it to the main `Dockerfile`!  We'd like to support popular Rust crates out of the box.
 
-## ARM support (experimental)
+## ARM support
 
-To target ARM hard float (Raspberry Pi):
+ARM (`aarch64` / `arm64`) is a first-class target of this container image. The published image is a multi-arch manifest, so on Apple Silicon or AWS Graviton hosts `docker pull` / `docker run` transparently selects the `linux/arm64` variant, and the default build target becomes `aarch64-unknown-linux-musl`. On `x86_64` hosts the `linux/amd64` variant is selected and the default target is `x86_64-unknown-linux-musl`.
+
+Both variants ship statically built OpenSSL, libpq, and zlib against `musl-libc`, so the same `cargo build --release` works on each architecture without additional flags. Binaries are written to `target/<target-triple>/release`.
+
+If you want to force a specific platform (for example, to build arm64 binaries from an amd64 host with QEMU), pass `--platform` to Docker:
 
 ```sh
-rust-musl-builder cargo build --target=armv7-unknown-linux-musleabihf --release
+docker run --rm -it --platform=linux/arm64 \
+  -v "$(pwd)":/home/rust/src \
+  ghcr.io/pyar6329/rust-musl-builder/rust-musl-builder:latest-llvm-cov \
+  cargo build --release
 ```
-
-Binaries will be written to `target/$TARGET_ARCHITECTURE/release`. By default it targets `x86_64-unknown-linux-musl` unless specified with `--target`.
-
-This is missing many of the libraries used by the `x86_64` build, and it should probably be split out of the base image and given its own tags.
 
 ## Development notes
 
@@ -220,7 +157,9 @@ Either the [Apache 2.0 license](./LICENSE-APACHE.txt), or the
 [about]: https://github.com/EmbarkStudios/cargo-about
 [deb]: https://github.com/mmstick/cargo-deb
 [deny]: https://github.com/EmbarkStudios/cargo-deny
-[mdbook]: https://github.com/rust-lang-nursery/mdBook
+[audit]: https://github.com/rustsec/rustsec/tree/main/cargo-audit
+[llvm-cov]: https://github.com/taiki-e/cargo-llvm-cov
+[protoc]: https://github.com/protocolbuffers/protobuf
 [musl-libc]: http://www.musl-libc.org/
 [musl-gcc]: http://www.musl-libc.org/how.html
 [rustup]: https://www.rustup.rs/
