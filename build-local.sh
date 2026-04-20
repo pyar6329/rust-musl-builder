@@ -24,6 +24,7 @@ echo ">>> Building ${TAG} (platform=${PLATFORM})"
 echo ">>> Cache dir: ${CACHE_DIR}"
 
 docker buildx build \
+  --progress=plain \
   --load \
   --platform "$PLATFORM" \
   --file ./Dockerfile \

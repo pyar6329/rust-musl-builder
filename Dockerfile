@@ -85,22 +85,16 @@ RUN --mount=type=cache,target=/downloads,sharing=locked \
     CPPFLAGS="-I/usr/local/musl/include" \
     LDFLAGS="-L/usr/local/musl/lib -L/usr/local/musl/lib64" \
     ./configure --with-openssl --without-readline --without-icu --without-zstd --without-lz4 --without-zlib --prefix=/usr/local/musl && \
-    cd src/interfaces/libpq && make -j"$(nproc)" all-static-lib && make install-lib-static && \
-    cd ../../bin/pg_config && make -j"$(nproc)" && make install && \
-    cd "/tmp/postgresql-${POSTGRESQL_VERSION}/src" && \
-    make -j"$(nproc)" -C common && \
-    make -j"$(nproc)" -C backend && \
-    make -j"$(nproc)" -C interfaces/libpq && \
-    make -C interfaces/libpq install-strip && \
-    make -j"$(nproc)" -C include && \
-    make -C include install-strip && \
-    make -j"$(nproc)" -C bin/pg_config && \
-    make -C bin/pg_config install-strip && \
-    mkdir libpq-tmp && \
-    cd libpq-tmp && \
-    ar -x ../interfaces/libpq/libpq.a && \
-    ar -x ../common/libpgcommon.a && \
-    ar -x ../port/libpgport.a && \
+    make -j"$(nproc)" -C src/common && \
+    make -j"$(nproc)" -C src/port && \
+    make -j"$(nproc)" -C src/interfaces/libpq all-static-lib && \
+    make -C src/interfaces/libpq install-lib-static && \
+    make -j"$(nproc)" -C src/bin/pg_config && \
+    make -C src/bin/pg_config install && \
+    mkdir /tmp/libpq-merge && cd /tmp/libpq-merge && \
+    ar -x "/tmp/postgresql-${POSTGRESQL_VERSION}/src/interfaces/libpq/libpq.a" && \
+    ar -x "/tmp/postgresql-${POSTGRESQL_VERSION}/src/common/libpgcommon.a" && \
+    ar -x "/tmp/postgresql-${POSTGRESQL_VERSION}/src/port/libpgport.a" && \
     rm -rf /usr/local/musl/lib/libpq.a && \
     ar -qs /usr/local/musl/lib/libpq.a ./*.o && \
     strip -x /usr/local/musl/lib/libpq.a
