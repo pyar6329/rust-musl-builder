@@ -1,5 +1,6 @@
 Copyright (c) 2016 Eric Kidd
 Copyright (c) 2016 Faraday, Inc.
+Copyright (c) 2024-2026 Tsukasa Arima <pyar6329@gmail.com>
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
