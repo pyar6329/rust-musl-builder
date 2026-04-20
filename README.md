@@ -2,7 +2,7 @@
 
 Docker image for building static Rust binaries against `musl-libc`. Includes OpenSSL, `libpq`, `libz`, SQLite3 pre-built statically, so crates like `diesel`, `sqlx`, and `openssl` work out of the box.
 
-Images are published as a multi-arch manifest (`linux/amd64` + `linux/arm64`) to `ghcr.io/pyar6329/rust-musl-builder/rust-musl-builder`. Tags are `X.Y.Z-llvm-cov` matching the Rust version in [`rust-toolchain`](./rust-toolchain).
+Images are published as a multi-arch manifest (`linux/amd64` + `linux/arm64`) to `ghcr.io/pyar6329/rust-musl-builder/rust-musl-builder`. Tags are `X.Y.Z-llvm-cov` matching the Rust version in [`rust-toolchain`](./rust-toolchain). See the [GitHub Container Registry package page](https://github.com/pyar6329/rust-musl-builder/pkgs/container/rust-musl-builder%2Frust-musl-builder) for the full tag list.
 
 ## Usage
 
