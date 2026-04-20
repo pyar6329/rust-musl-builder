@@ -16,13 +16,10 @@ ARG OPENSSL_VERSION=3.3.0
 # - https://github.com/EmbarkStudios/cargo-deny/releases
 # - http://zlib.net/
 # - https://ftp.postgresql.org/pub/source/
-#
-# We're stuck on PostgreSQL 11 until we figure out
-# https://github.com/emk/rust-musl-builder/issues.
 ARG CARGO_ABOUT_VERSION=0.6.0
 ARG CARGO_DENY_VERSION=0.14.16
 ARG ZLIB_VERSION=1.3.2
-ARG POSTGRESQL_VERSION=14.11
+ARG POSTGRESQL_VERSION=18.3
 ARG PROTOBUF_VERSION=26.1
 
 # Make sure we have basic dev tools for building C libraries.  Our goal here is
@@ -118,7 +115,7 @@ RUN --mount=type=cache,target=/downloads,sharing=locked \
     T="/downloads/postgresql-$POSTGRESQL_VERSION.tar.gz" && \
     [ -f "$T" ] || curl -fL --retry 3 -o "$T" "https://ftp.postgresql.org/pub/source/v$POSTGRESQL_VERSION/postgresql-$POSTGRESQL_VERSION.tar.gz" && \
     cd /tmp && tar xzf "$T" && cd "postgresql-$POSTGRESQL_VERSION" && \
-    CC=musl-gcc CPPFLAGS="-I/usr/local/musl/include" LDFLAGS="-L/usr/local/musl/lib -L/usr/local/musl/lib64" ./configure --with-openssl --without-readline --prefix=/usr/local/musl && \
+    CC=musl-gcc CPPFLAGS="-I/usr/local/musl/include" LDFLAGS="-L/usr/local/musl/lib -L/usr/local/musl/lib64" ./configure --with-openssl --without-readline --without-icu --without-zstd --without-lz4 --prefix=/usr/local/musl && \
     cd src/interfaces/libpq && make -j"$(nproc)" all-static-lib && make install-lib-static && \
     cd ../../bin/pg_config && make -j"$(nproc)" && make install && \
     cd "/tmp/postgresql-$POSTGRESQL_VERSION/src" && \
