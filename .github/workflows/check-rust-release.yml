@@ -48,6 +48,4 @@ jobs:
           git push -u origin "$BRANCH"
           gh pr create \
             --title "feat: bump rust $NEW" \
-            --body "Rust \`$NEW\` has been released.
-
-See: https://github.com/rust-lang/rust/releases/tag/$NEW"
+            --body "Rust \`$NEW\` has been released. See: https://github.com/rust-lang/rust/releases/tag/$NEW"
