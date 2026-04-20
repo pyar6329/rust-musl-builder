@@ -51,7 +51,7 @@ RUN --mount=type=cache,target=/downloads,sharing=locked \
     T="/downloads/openssl-${OPENSSL_VERSION}.tar.gz" && \
     tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" && mv "$T.part" "$T"; } && \
     cd /tmp && tar xzf "$T" && cd "openssl-${OPENSSL_VERSION}" && \
-    env CC=musl-gcc ./Configure no-shared no-zlib no-tests no-quic no-fuzz-libfuzzer no-fuzz-afl -fPIC --prefix=/usr/local/musl -DOPENSSL_NO_SECURE_MEMORY $EXTRA_CFLAGS "$OSSL_TARGET" && \
+    env CC=musl-gcc CFLAGS="$EXTRA_CFLAGS" ./Configure no-shared no-zlib no-tests no-quic no-fuzz-libfuzzer no-fuzz-afl -fPIC --prefix=/usr/local/musl -DOPENSSL_NO_SECURE_MEMORY "$OSSL_TARGET" && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ make -j"$(nproc)" depend && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ make -j"$(nproc)" && \
     make install_sw && \
@@ -65,7 +65,7 @@ ARG ZLIB_VERSION
 RUN --mount=type=cache,target=/downloads,sharing=locked \
     set -eux && \
     T="/downloads/zlib-${ZLIB_VERSION}.tar.gz" && \
-    tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "http://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" && mv "$T.part" "$T"; } && \
+    tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" && mv "$T.part" "$T"; } && \
     cd /tmp && tar xzf "$T" && cd "zlib-${ZLIB_VERSION}" && \
     CC=musl-gcc ./configure --static --prefix=/usr/local/musl && \
     make -j"$(nproc)" && make install
