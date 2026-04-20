@@ -139,10 +139,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       musl-dev \
       musl-tools \
       pkgconf \
-      sudo \
       xutils-dev && \
     (userdel -r ubuntu 2>/dev/null || true) && \
-    useradd rust --user-group --create-home --shell /bin/bash --groups sudo && \
+    useradd rust --user-group --create-home --shell /bin/bash && \
     T="/downloads/cargo-about-${CARGO_ABOUT_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && \
     tar tzf "$T" >/dev/null 2>&1 || { rm -f "$T" && curl -fL --retry 3 -o "$T.part" "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/cargo-about-${CARGO_ABOUT_VERSION}-${RUST_ARCH}-unknown-linux-musl.tar.gz" && mv "$T.part" "$T"; } && \
     tar -C /tmp -xf "$T" && \
@@ -170,10 +169,6 @@ COPY --from=zlib-builder /usr/local/musl/lib/libz.a /usr/local/musl/lib/libz.a
 COPY --from=zlib-builder /usr/local/musl/include/zlib.h /usr/local/musl/include/zlib.h
 COPY --from=zlib-builder /usr/local/musl/include/zconf.h /usr/local/musl/include/zconf.h
 COPY --from=zlib-builder /usr/local/musl/lib/pkgconfig/zlib.pc /usr/local/musl/lib/pkgconfig/zlib.pc
-
-# git credentials helper
-COPY git-credential-ghtoken /usr/local/bin/ghtoken
-RUN git config --global credential.https://github.com.helper ghtoken
 
 # Rust toolchain + cargo config generated with the correct default target
 ENV RUSTUP_HOME=/opt/rust/rustup \
@@ -218,11 +213,8 @@ RUN --mount=type=cache,target=/opt/rust/cargo/registry,sharing=locked \
     cargo install -f cargo-deb && \
     cargo install -f cargo-llvm-cov
 
-COPY --chmod=440 sudoers /etc/sudoers.d/nopasswd
-
 USER rust
 RUN mkdir -p /home/rust/libs /home/rust/src /home/rust/.cargo && \
-    ln -s /opt/rust/cargo/config.toml /home/rust/.cargo/config.toml && \
-    git config --global credential.https://github.com.helper ghtoken
+    ln -s /opt/rust/cargo/config.toml /home/rust/.cargo/config.toml
 
 WORKDIR /home/rust/src
